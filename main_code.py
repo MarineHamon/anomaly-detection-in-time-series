@@ -15,86 +15,87 @@ from pyod.models.pca import PCA
 
 from utils_fonctions import read_dataset, sliding_window, transformation_label, pivot4tsfresh, add_json_file
 
-"""
-Fonction principale prenant en entrée le chemin vers une série temporelle et ajoutant les résultats 
-dans le fichier .json du jeu de données associé.
 
-name_path : nom du chemin permettant d'accéder à la série étudiée.
-"""
 def main_function (name_path):
-    # Suppression des warnings
+    """
+    Main function that takes the path to a time series as input and adds the results
+    to the .json file of the associated dataset.
+
+    name_path : name of the path used to access the series studied.
+    """
+    # Removing warnings.
     warnings.simplefilter("ignore", UserWarning)
-    # Création du dictionnaire des algorithmes de détection utilisés
+    # Creation of a dictionary of detection algorithms used.
     dict_methods = {"IF" : IForest(random_state=123), 
                    "PCA" : PCA(random_state=123, standardization=False, n_components=0.75),
                    "LOF" : LocalOutlierFactor()}
-    # Liste des tailles de fenêtres testées
+    # List of window sizes tested.
     w_size = [32,64,128,256]
-    # Initialisation du dictionnaire contenant les AUC de la série associée au chemin spécifié
+    # Initialisation of the dictionary containing the AUCs of a time series associated with the specified path.
     dict_auc = {"TS" : np.zeros((len(w_size), len(dict_methods)), dtype=int).tolist(), "FE" :np.zeros((len(w_size), len(dict_methods)), dtype=int).tolist() } 
-    # Lecture des données 
+    # Reading data.
     data_ts = read_dataset(name_path) 
 
-    # Application des prétraitements et des algorithmes sur la série concernée pour chaque taille de fenêtre 
+    # Application of pre-processing and algorithms to a time series concerned for each window size.
     for id_ws, ws in enumerate(w_size):
        
-        # Application du fenêtrage permettant de transformer la série 'data_ts' en table
+        # Application of windowing to transform the ‘data_ts’ series into a table.
         data_wo_fe = sliding_window(data_ts.value, ws)
         # Application du fenêtrage sur les labels de la série 'data_ts' permettant d'agréger les labels de chaque sous-séquence obtenue
         true_labels_transf = transformation_label(data_ts.label, ws)
 
-        # Application d'une normalisation (si cela est souhaité)
+        # Application of standardisation (if desired).
         
-        # Tsfresh nécessite un format spécifique des données, il est donc nécessaire de pivoter la table 'data_wo_fe'
+        # Tsfresh requires a specific data format, so the ‘data_wo_fe’ table must be rotated.
         data_pivot = pivot4tsfresh(data_wo_fe)
-        # Extraction des caractéristiques (MinimalFCParameters = 10 features et EfficientFCParameters = 777 features)
-        # Spécifier le nom de processeurs à utiliser avec n_jobs
+        # Feature extraction (MinimalFCParameters = 10 features et EfficientFCParameters = 777 features).
+        # Specify the name of the processors to be used with n_jobs.
         FE = extract_features(data_pivot, default_fc_parameters= EfficientFCParameters(), 
             column_id="TSname", column_sort="time", column_kind=None, column_value=None,n_jobs = 42)
         # Suppression de la table pivotée pour gagner en espace mémoire
         del data_pivot 
        
-       # Affichage du nombre de colonnes de la table 'FE' contenant les caractéristiques extraites des sous-séquences et de la taille de la fenêtre
+        # Display of the number of columns in the ‘FE’ table containing the characteristics extracted from the subsequences and the size of the window.
         print("\n",  "     before drop", name_path, FE.shape, "ws =", ws)
-        # Remplacement des valeurs -infini et +infini par NA 
+        # Replacement of -infinite and +infinite values by NA.
         FE.replace([np.inf, -np.inf], np.nan, inplace=True)
-        # Suppression des colonnes contenant des valeurs manquantes
+        # Deleting columns with missing values.
         FE.dropna(axis='columns', inplace = True)
-        # Affichage du nombre de colonnes de la table 'FE' après suppression des colonnes contenant des valeurs manquantes et de la taille de la fenêtre 
+        # Display of the number of columns in the ‘FE’ table after deleting columns containing missing values.
         print("       after drop", name_path, FE.shape,  "ws =", ws, "\n")
     
-        # Application des méthodes de détection d'anomalies 
+        # Application of anomaly detection methods.
         for (id_method, (name_method, method)) in enumerate(dict_methods.items()): 
 
-            # Application de l'algorithme sur les données temporelles 
+            # Application of the algorithm to temporal data.
             method_TS = method
             method_TS.fit(data_wo_fe)
             if name_method != "LOF" :
                 anomaly_scores_TS = method_TS.decision_function(data_wo_fe)
             else : 
                 anomaly_scores_TS = -method_TS.negative_outlier_factor_
-            # Calcul de l'AUC (sur les données temporelles)
+            # Calculation of the AUC (on time series data).
             data_auc = round(roc_auc_score(true_labels_transf.label, anomaly_scores_TS),3)
            
-            # Application de l'algorithme sur les données contenant les features  
+            # Applying the algorithm to data containing features.
             method_FE = method
             method_FE.fit(FE)
             if name_method != "LOF": 
                 anomaly_scores_FE = method_FE.decision_function(FE)
             else : 
                 anomaly_scores_FE = -method_FE.negative_outlier_factor_
-            # Calcul de l'AUC (sur les features)    
+            # Calculation of AUC (on features).   
             fe_auc = round(roc_auc_score(true_labels_transf.label, anomaly_scores_FE),3)
             
-            # Ajout des deux AUC calculés au dictionnaire regroupant les résultats de la série associée au chemin spécifié
+            # Addition of the two AUCs calculated to the dictionary grouping the results of the series associated with the specified path.
             dict_auc["TS"][id_ws][id_method] = data_auc
             dict_auc["FE"][id_ws][id_method] = fe_auc
             
-    # Ajout du dictionnaire des AUC de la série associée au chemin spécifié aux résultats des autres séries du jeu de données
+    # Add the dictionary containing the AUCs of the series associated with the specified path to the results of the other series in the dataset.
     add_json_file("results/efficient_no_norm_auc.json", dict_auc, name_path)
     
 
-# Application de la fonction précédente au répertoire nommé 'Data' contenant les séries temporelles 
+# Application of the previous function to the directory named ‘Data’ containing time series.
 dir_name = "Data"
 Parallel(n_jobs=1)(delayed(main_function)(os.path.join(dir_name, file)) for file in os.listdir(dir_name))
 
