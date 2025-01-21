@@ -41,7 +41,7 @@ def main_function (name_path):
        
         # Application of windowing to transform the ‘data_ts’ series into a table.
         data_wo_fe = sliding_window(data_ts.value, ws)
-        # Application du fenêtrage sur les labels de la série 'data_ts' permettant d'agréger les labels de chaque sous-séquence obtenue
+        # Application of windowing on the labels of the ‘data_ts’ series to aggregate the labels of each subsequence obtained.
         true_labels_transf = transformation_label(data_ts.label, ws)
 
         # Application of standardisation (if desired).
@@ -52,7 +52,7 @@ def main_function (name_path):
         # Specify the name of the processors to be used with n_jobs.
         FE = extract_features(data_pivot, default_fc_parameters= EfficientFCParameters(), 
             column_id="TSname", column_sort="time", column_kind=None, column_value=None,n_jobs = 42)
-        # Suppression de la table pivotée pour gagner en espace mémoire
+        # Removal of the pivoting table to save memory space.
         del data_pivot 
        
         # Display of the number of columns in the ‘FE’ table containing the characteristics extracted from the subsequences and the size of the window.
